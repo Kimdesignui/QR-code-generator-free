@@ -12,6 +12,7 @@ export interface ContactInfo {
 export interface QRCodeConfig {
   mode: 'url' | 'contact'; // Chế độ hiện tại
   value: string; // Giá trị cuối cùng để tạo QR (URL hoặc chuỗi vCard)
+  urlValue?: string; // New: Lưu riêng giá trị URL để không bị mất khi chuyển qua lại tab Contact
   contactInfo?: ContactInfo; // Lưu trữ thông tin form liên hệ để edit lại
   
   size: number; // Độ phân giải ảnh xuất (px)
@@ -23,7 +24,10 @@ export interface QRCodeConfig {
   level: 'L' | 'M' | 'Q' | 'H';
   
   title?: string;
+  titleFontSize: number; // New: Cỡ chữ tiêu đề
   description?: string;
+  descFontSize: number; // New: Cỡ chữ mô tả
+  textYOffset: number; // New: Vị trí dọc của khối văn bản (0 là giữa, âm là lên, dương là xuống)
   
   bgImage?: string;
   bgImageOpacity: number;
