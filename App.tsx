@@ -1,12 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { QRCodeCanvas } from 'qrcode.react';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { 
   QrCode, 
   Download, 
   Sparkles, 
   Settings, 
-  Copy, 
   CheckCircle2, 
   Maximize2,
   Image as ImageIcon,
@@ -21,8 +20,6 @@ import {
   Edit,
   Save,
   ArrowRight,
-  ChevronRight,
-  Info,
   Link as LinkIcon,
   Contact2,
   User,
@@ -33,7 +30,12 @@ import {
   Globe,
   Building,
   Fingerprint,
-  X
+  ClipboardCopy,
+  FileCode,
+  ChevronDown,
+  Palette,
+  Pipette,
+  Type
 } from 'lucide-react';
 import { QRCodeConfig, GeneratedQR, ContactInfo } from './types';
 
@@ -55,6 +57,7 @@ const DEFAULT_CONFIG: QRCodeConfig = {
   qrScale: 0.25,
   fgColor: '#000000',
   bgColor: '#ffffff',
+  textColor: '#000000',
   level: 'H',
   title: '',
   description: '',
@@ -78,18 +81,20 @@ export default function App() {
   
   // Create View State
   const [useBgImage, setUseBgImage] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [exportFormat, setExportFormat] = useState<'png' | 'jpeg'>('png');
+  const [copiedImage, setCopiedImage] = useState(false);
+  // Default format is empty to show placeholder
+  const [exportFormat, setExportFormat] = useState<'png' | 'jpeg' | 'svg' | ''>(''); 
   const [bgSourceType, setBgSourceType] = useState<'upload' | 'url'>('upload');
   const [bgUrlInput, setBgUrlInput] = useState('');
   
   const exportCanvasRef = useRef<HTMLDivElement>(null);
+  const exportSvgRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Constants
   const INTERNAL_MARGIN_RATIO = 0.05; 
-  const FONT_SIZE_RATIO = 0.08;
+  const HIDDEN_CANVAS_SIZE = 1024;
 
   // Load History on Mount
   useEffect(() => {
@@ -161,7 +166,7 @@ END:VCARD`;
   };
 
   // --- Logic Editor ---
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     const isNumeric = ['size', 'bgImageOpacity', 'bgImageScale', 'qrScale', 'logoScale'].includes(name);
     const val = isNumeric ? parseFloat(value) : value;
@@ -217,6 +222,22 @@ END:VCARD`;
     }
   };
 
+  const handleEyedropper = async (targetField: 'fgColor' | 'textColor') => {
+    if (!('EyeDropper' in window)) {
+      alert("Trình duyệt của bạn không hỗ trợ công cụ chấm màu (Eyedropper). Vui lòng dùng Chrome/Edge trên máy tính.");
+      return;
+    }
+    try {
+      // @ts-ignore
+      const eyeDropper = new window.EyeDropper();
+      // @ts-ignore
+      const result = await eyeDropper.open();
+      setConfig(prev => ({ ...prev, [targetField]: result.sRGBHex }));
+    } catch (e) {
+      console.log("Eyedropper cancelled");
+    }
+  };
+
   const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -227,24 +248,43 @@ END:VCARD`;
     });
   };
 
-  const handleDownload = async () => {
-    if (!config.value) return;
-
+  // --- CORE GENERATION LOGIC ---
+  const generateFinalCanvas = async (): Promise<HTMLCanvasElement | null> => {
     const canvasSize = config.size;
     const qrGroupWidth = canvasSize * config.qrScale; 
     const internalMargin = qrGroupWidth * INTERNAL_MARGIN_RATIO;
     const actualQRSize = qrGroupWidth - (internalMargin * 2);
-    const fontSize = canvasSize * FONT_SIZE_RATIO * 0.5; // Điều chỉnh font size theo size ảnh
-    
+
+    // Font Config
+    const titleFontSize = canvasSize * 0.06;     // Title ~6% of canvas
+    const descFontSize = canvasSize * 0.035;     // Desc ~3.5% of canvas
+    const textGap = canvasSize * 0.02;           // Gap between title and desc
+    const qrGap = canvasSize * 0.05;             // Gap between text group and QR
+
+    // Calculate Text Height
+    let textHeight = 0;
+    if (config.title) textHeight += titleFontSize * 1.3; // 1.3 line height
+    if (config.description) textHeight += descFontSize * 1.3;
+    if (config.title && config.description) textHeight += textGap;
+
+    // Total Content Height (Text + Gap + QR)
+    const hasText = !!(config.title || config.description);
+    const totalContentHeight = qrGroupWidth + (hasText ? (textHeight + qrGap) : 0);
+
+    // Starting Y to center everything vertically
+    let currentY = (canvasSize - totalContentHeight) / 2;
+
     const canvas = document.createElement('canvas');
     canvas.width = canvasSize;
     canvas.height = canvasSize;
     const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) return;
+    if (!ctx) return null;
 
+    // 1. Fill Background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // 2. Draw Background Image
     if (useBgImage && config.bgImage) {
       try {
         const bgImg = await loadImage(config.bgImage);
@@ -273,8 +313,39 @@ END:VCARD`;
       }
     }
 
+    // 3. Draw Text (Title & Description)
+    ctx.fillStyle = config.textColor || config.fgColor; // Use text color, fallback to fgColor
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    if (config.title) {
+        ctx.font = `bold ${titleFontSize}px Inter, sans-serif`;
+        // Draw Shadow for text readability
+        ctx.save();
+        ctx.shadowColor = "rgba(255,255,255,0.8)";
+        ctx.shadowBlur = 4;
+        ctx.fillText(config.title.substring(0, 40), canvas.width / 2, currentY);
+        ctx.restore();
+        currentY += titleFontSize * 1.3;
+    }
+
+    if (config.description) {
+        if (config.title) currentY += textGap;
+        ctx.font = `normal ${descFontSize}px Inter, sans-serif`;
+        // Draw Shadow for text readability
+        ctx.save();
+        ctx.shadowColor = "rgba(255,255,255,0.8)";
+        ctx.shadowBlur = 4;
+        ctx.fillText(config.description.substring(0, 60), canvas.width / 2, currentY);
+        ctx.restore();
+        currentY += descFontSize * 1.3;
+    }
+
+    if (hasText) currentY += qrGap;
+
+    // 4. Draw QR Container Box
     const patchX = (canvas.width - qrGroupWidth) / 2;
-    const patchY = (canvas.height - qrGroupWidth) / 2;
+    const patchY = currentY; // Position QR after text
     const radius = qrGroupWidth * 0.1;
 
     ctx.save();
@@ -287,6 +358,7 @@ END:VCARD`;
     ctx.fill();
     ctx.restore();
 
+    // 5. Draw QR Code
     const tempCanvas = exportCanvasRef.current?.querySelector('canvas');
     if (tempCanvas) {
       ctx.drawImage(
@@ -298,26 +370,71 @@ END:VCARD`;
       );
     }
 
-    if (config.title) {
-        ctx.fillStyle = config.fgColor;
-        ctx.font = `bold ${fontSize}px Inter, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        // Vẽ title ở dưới QR một chút
-        ctx.fillText(config.title.substring(0,30), canvas.width / 2, patchY + qrGroupWidth + (fontSize * 1.2));
-    }
-
-    const mimeType = exportFormat === 'png' ? 'image/png' : 'image/jpeg';
-    const link = document.createElement('a');
-    link.download = `smart-qr-${Date.now()}.${exportFormat}`;
-    link.href = canvas.toDataURL(mimeType, 0.95);
-    link.click();
+    return canvas;
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(config.value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // --- ACTIONS ---
+
+  const handleDownload = async () => {
+    if (!config.value) return;
+
+    if (!exportFormat) {
+      alert("Vui lòng chọn định dạng ảnh muốn tải xuống!");
+      return;
+    }
+
+    if (exportFormat === 'svg') {
+       // SVG Download Logic
+       if (!exportSvgRef.current) return;
+       const svgElement = exportSvgRef.current.querySelector('svg');
+       if (!svgElement) return;
+
+       const serializer = new XMLSerializer();
+       const source = serializer.serializeToString(svgElement);
+       
+       // Add XML declaration
+       const svgBlob = new Blob([`<?xml version="1.0" standalone="no"?>\r\n${source}`], {type: "image/svg+xml;charset=utf-8"});
+       const url = URL.createObjectURL(svgBlob);
+       
+       const link = document.createElement('a');
+       link.download = `smart-qr-${Date.now()}.svg`;
+       link.href = url;
+       link.click();
+       URL.revokeObjectURL(url);
+    } else {
+       // PNG/JPEG Download Logic
+       const canvas = await generateFinalCanvas();
+       if (!canvas) return;
+
+       const mimeType = exportFormat === 'png' ? 'image/png' : 'image/jpeg';
+       const link = document.createElement('a');
+       link.download = `smart-qr-${Date.now()}.${exportFormat}`;
+       link.href = canvas.toDataURL(mimeType, 0.95);
+       link.click();
+    }
+  };
+
+  const handleCopyImage = async () => {
+    if (!config.value) return;
+    
+    // Copy Image Logic (Raster)
+    const canvas = await generateFinalCanvas();
+    if (!canvas) return;
+
+    try {
+        canvas.toBlob(async (blob) => {
+            if (!blob) return;
+            // Create ClipboardItem
+            const item = new ClipboardItem({ "image/png": blob });
+            await navigator.clipboard.write([item]);
+            
+            setCopiedImage(true);
+            setTimeout(() => setCopiedImage(false), 2000);
+        }, 'image/png');
+    } catch (err) {
+        console.error("Copy failed", err);
+        alert("Trình duyệt của bạn không hỗ trợ copy ảnh trực tiếp (hoặc cần chạy trên HTTPS).");
+    }
   };
 
   // Preview Calculations
@@ -326,12 +443,14 @@ END:VCARD`;
   const previewInternalMargin = previewQRWidth * INTERNAL_MARGIN_RATIO;
   const previewActualQRSize = previewQRWidth - (previewInternalMargin * 2);
 
-  // Constants for Logo
-  const HIDDEN_CANVAS_SIZE = 1024;
+  // Preview Text Layout for Visualizing in UI (Approximate)
+  const hasPreviewText = !!(config.title || config.description);
+  // Simple CSS scale for preview
+  const previewScale = 1; 
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans text-slate-900">
-      {/* Hidden Render for Canvas Export */}
+      {/* Hidden Render for Canvas Export (Raster) */}
       <div className="hidden">
         {config.value && (
           <div ref={exportCanvasRef}>
@@ -349,6 +468,28 @@ END:VCARD`;
                 excavate: true,
               } : undefined}
             />
+          </div>
+        )}
+      </div>
+
+      {/* Hidden Render for SVG Export (Vector) */}
+      <div className="hidden">
+        {config.value && (
+          <div ref={exportSvgRef}>
+             <QRCodeSVG
+                value={config.value}
+                size={config.size} // Use actual output size for correct SVG coordinate system
+                fgColor={config.fgColor}
+                bgColor={config.bgColor} // SVG needs background color for the QR part
+                level={config.level}
+                includeMargin={true}
+                imageSettings={config.logo ? {
+                    src: config.logo,
+                    height: config.size * config.logoScale,
+                    width: config.size * config.logoScale,
+                    excavate: true,
+                } : undefined}
+             />
           </div>
         )}
       </div>
@@ -549,6 +690,73 @@ END:VCARD`;
                  </div>
               </div>
 
+               {/* 1.5. Tiêu đề & Mô tả (Mới) */}
+               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                  <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <Type className="w-5 h-5 text-indigo-500" />
+                    Văn bản hiển thị
+                  </h2>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Tiêu đề (Nằm trên QR)</label>
+                          <input
+                            type="text"
+                            name="title"
+                            value={config.title}
+                            onChange={handleInputChange}
+                            maxLength={50}
+                            placeholder="VD: Quét ngay để nhận quà"
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                          />
+                      </div>
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Mô tả ngắn</label>
+                          <textarea
+                            name="description"
+                            value={config.description}
+                            onChange={handleInputChange}
+                            maxLength={100}
+                            rows={2}
+                            placeholder="VD: Giảm giá 50% cho đơn đầu tiên..."
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
+                          />
+                      </div>
+
+                      {/* Text Color Picker */}
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 mb-1 block">Màu chữ</label>
+                          <div className="flex gap-2">
+                              <div className="flex-1 flex items-center gap-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
+                                <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-sm shrink-0">
+                                    <input 
+                                      type="color" 
+                                      name="textColor" 
+                                      value={config.textColor || config.fgColor} 
+                                      onChange={handleInputChange} 
+                                      className="absolute inset-0 w-[150%] h-[150%] -top-[25%] -left-[25%] cursor-pointer p-0 border-0" 
+                                    />
+                                </div>
+                                <input 
+                                  type="text"
+                                  name="textColor" 
+                                  value={config.textColor || config.fgColor} 
+                                  onChange={handleInputChange} 
+                                  placeholder="#000000"
+                                  className="flex-1 bg-transparent border-none outline-none text-sm font-bold font-mono text-slate-700 uppercase"
+                                />
+                              </div>
+                              <button 
+                                  onClick={() => handleEyedropper('textColor')}
+                                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all"
+                                  title="Chấm màu"
+                              >
+                                  <Pipette className="w-5 h-5" />
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
               {/* 2. Cấu hình Kích thước & Logo */}
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                 <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
@@ -744,21 +952,38 @@ END:VCARD`;
               </div>
 
               {/* 4. Formatting */}
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Màu chủ đạo</label>
-                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
-                      <input type="color" name="fgColor" value={config.fgColor} onChange={handleInputChange} className="w-8 h-8 rounded-lg cursor-pointer border-0 bg-transparent" />
-                      <span className="text-xs font-mono font-bold text-slate-600 uppercase">{config.fgColor}</span>
-                    </div>
-                </div>
-                <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Định dạng xuất</label>
-                    <div className="relative">
-                      <select value={exportFormat} onChange={(e) => setExportFormat(e.target.value as any)} className="w-full appearance-none px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                        <option value="png">PNG (Chất lượng cao)</option>
-                        <option value="jpeg">JPEG (Nhẹ hơn)</option>
-                      </select>
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                <div className="space-y-3">
+                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                        <Palette className="w-4 h-4 text-indigo-500" /> Màu chủ đạo
+                    </label>
+                    <div className="flex gap-2">
+                        <div className="flex-1 flex items-center gap-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
+                          <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200 shadow-sm shrink-0">
+                              <input 
+                                type="color" 
+                                name="fgColor" 
+                                value={config.fgColor} 
+                                onChange={handleInputChange} 
+                                className="absolute inset-0 w-[150%] h-[150%] -top-[25%] -left-[25%] cursor-pointer p-0 border-0" 
+                              />
+                          </div>
+                          <input 
+                            type="text"
+                            name="fgColor" 
+                            value={config.fgColor} 
+                            onChange={handleInputChange} 
+                            placeholder="#000000"
+                            className="flex-1 bg-transparent border-none outline-none text-sm font-bold font-mono text-slate-700 uppercase"
+                          />
+                        </div>
+                        <button 
+                             onClick={() => handleEyedropper('fgColor')}
+                             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all"
+                             title="Chấm màu"
+                        >
+                             <Pipette className="w-5 h-5" />
+                        </button>
                     </div>
                 </div>
               </div>
@@ -800,39 +1025,62 @@ END:VCARD`;
                   </div>
 
                   <div 
-                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center shadow-2xl transition-all duration-300"
+                      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center transition-all duration-300"
                       style={{ 
-                        backgroundColor: config.bgColor,
-                        width: `${previewSize * config.qrScale}px`, 
-                        padding: `${previewSize * config.qrScale * INTERNAL_MARGIN_RATIO}px`,
-                        borderRadius: `${previewSize * config.qrScale * 0.1}px`
+                        // Visualizing the centering logic in preview is complex due to scale.
+                        // We will just center the QR visually here for simplicity, but the text is not rendered in this HTML preview,
+                        // it's only in the canvas output.
+                        // To improve UX, we could try to render HTML text here, but keeping it consistent with Canvas is hard.
+                        // Let's stick to showing just the QR container here centered, 
+                        // knowing the final export has the text.
                       }}
                   >
-                    {config.value ? (
-                      <QRCodeCanvas
-                          value={config.value}
-                          size={previewActualQRSize}
-                          fgColor={config.fgColor}
-                          bgColor="transparent"
-                          level={config.level}
-                          includeMargin={false}
-                          imageSettings={config.logo ? {
-                            src: config.logo,
-                            height: previewActualQRSize * config.logoScale,
-                            width: previewActualQRSize * config.logoScale,
-                            excavate: true,
-                          } : undefined}
-                      />
-                    ) : (
-                      <div className="w-full aspect-square bg-slate-100 rounded flex items-center justify-center">
-                        <QrCode className="w-1/2 h-1/2 text-slate-300" />
-                      </div>
-                    )}
+                     {/* Text Preview Overlay (Approximate) */}
+                     {hasPreviewText && (
+                        <div className="text-center mb-2" style={{ color: config.textColor || config.fgColor }}>
+                             {config.title && <div className="font-bold text-sm leading-tight drop-shadow-md">{config.title}</div>}
+                             {config.description && <div className="text-[10px] leading-tight mt-1 opacity-90 drop-shadow-md">{config.description}</div>}
+                        </div>
+                     )}
+
+                    <div 
+                        className="flex flex-col items-center shadow-2xl"
+                        style={{ 
+                            backgroundColor: config.bgColor,
+                            width: `${previewSize * config.qrScale}px`, 
+                            padding: `${previewSize * config.qrScale * INTERNAL_MARGIN_RATIO}px`,
+                            borderRadius: `${previewSize * config.qrScale * 0.1}px`
+                        }}
+                    >
+                        {config.value ? (
+                        <QRCodeCanvas
+                            value={config.value}
+                            size={previewActualQRSize}
+                            fgColor={config.fgColor}
+                            bgColor="transparent"
+                            level={config.level}
+                            includeMargin={false}
+                            imageSettings={config.logo ? {
+                                src: config.logo,
+                                height: previewActualQRSize * config.logoScale,
+                                width: previewActualQRSize * config.logoScale,
+                                excavate: true,
+                            } : undefined}
+                        />
+                        ) : (
+                        <div className="w-full aspect-square bg-slate-100 rounded flex items-center justify-center">
+                            <QrCode className="w-1/2 h-1/2 text-slate-300" />
+                        </div>
+                        )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-8 space-y-4">
+                {/* ACTION BAR */}
+                <div className="mt-8 space-y-3">
+                  {/* Row 1: Quick Actions */}
                   <div className="grid grid-cols-2 gap-3">
+                    {/* Save Template Button */}
                     <button
                       onClick={handleSaveToHistory}
                       disabled={!config.value}
@@ -840,26 +1088,53 @@ END:VCARD`;
                     >
                       <Save className="w-5 h-5" /> Lưu mẫu
                     </button>
+                    
+                    {/* Copy Image Button */}
                     <button
-                      onClick={handleDownload}
+                      onClick={handleCopyImage}
                       disabled={!config.value}
-                      className="flex items-center justify-center gap-2 px-4 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-xl shadow-indigo-200 active:scale-95 text-sm"
+                      className="flex items-center justify-center gap-2 px-4 py-4 bg-white border border-indigo-200 text-indigo-700 rounded-2xl font-bold hover:bg-indigo-50 disabled:opacity-50 transition-all active:scale-95 text-sm"
                     >
-                      <Download className="w-5 h-5" /> Tải xuống
+                       {copiedImage ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <ClipboardCopy className="w-5 h-5" />}
+                       {copiedImage ? 'Đã copy' : 'Copy Ảnh'}
                     </button>
                   </div>
-                  
-                  {config.value && (
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <div className="flex-1 truncate text-xs text-slate-500 font-medium px-2">
-                        {config.mode === 'contact' ? `vCard: ${config.contactInfo?.fullName}` : config.value}
+
+                  {/* Row 2: Download Group */}
+                  <div className={`flex rounded-2xl shadow-xl shadow-indigo-200 border border-indigo-600 overflow-hidden transition-all ${!config.value ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <div className="relative bg-white border-r border-indigo-100 flex-1">
+                         <select 
+                           value={exportFormat} 
+                           onChange={(e) => setExportFormat(e.target.value as any)}
+                           className="w-full h-full pl-3 pr-8 bg-transparent text-xs font-bold text-indigo-700 outline-none appearance-none cursor-pointer py-4"
+                         >
+                            <option value="">-Chọn định dạng tải ảnh-</option>
+                            <option value="png">PNG (Cao)</option>
+                            <option value="jpeg">JPEG (Nhẹ)</option>
+                            <option value="svg">SVG (Vector)</option>
+                         </select>
+                         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none"/>
                       </div>
-                      <button onClick={handleCopy} className="p-2 hover:bg-white rounded-lg text-indigo-500 transition-colors">
-                        {copied ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                      
+                      <button
+                         onClick={handleDownload}
+                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                         title="Tải xuống"
+                      >
+                         <Download className="w-5 h-5" />
+                         <span>Tải về</span>
                       </button>
-                    </div>
-                  )}
+                  </div>
                 </div>
+                  
+                {config.value && exportFormat === 'svg' && (
+                  <div className="text-center mt-4">
+                      <p className="text-[10px] text-amber-500 flex items-center justify-center gap-1 mb-1">
+                        <FileCode className="w-3 h-3"/> Chế độ SVG: Chỉ xuất Vector QR (không bao gồm nền nghệ thuật)
+                      </p>
+                  </div>
+                )}
+
               </div>
             </div>
           </div>
@@ -1054,6 +1329,40 @@ END:VCARD`;
                    </div>
                 </div>
              </div>
+
+             {/* Step 4: Text & Colors */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center md:flex-row-reverse">
+               <div className="order-2 md:order-1 rounded-2xl overflow-hidden shadow-xl border border-slate-200 bg-slate-50 p-6 flex items-center justify-center">
+                  <div className="relative w-full h-48 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center overflow-hidden">
+                     <div className="absolute top-4 text-2xl font-bold" style={{color: '#4f46e5'}}>Màu Tiêu Đề</div>
+                     <div className="mt-8 w-32 h-32 bg-white border border-slate-200 rounded-lg flex items-center justify-center font-mono text-xs text-slate-300">QR CODE</div>
+                     <div className="absolute top-8 right-10 bg-white p-2 rounded-full shadow-lg border border-slate-100 animate-bounce">
+                        <Pipette className="w-5 h-5 text-indigo-600" />
+                     </div>
+                  </div>
+               </div>
+               <div className="order-1 md:order-2 space-y-4">
+                   <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-700 font-black text-xl shadow-sm border border-indigo-200">4</div>
+                   <h3 className="text-2xl font-bold text-slate-900">Văn bản & Màu sắc</h3>
+                   <p className="text-slate-600 leading-relaxed">
+                      Thêm thông điệp kêu gọi hành động (Call to Action) ngay trên mã QR để tăng tỉ lệ quét.
+                   </p>
+                   <ul className="space-y-2">
+                      <li className="flex items-center gap-2 text-sm font-medium text-slate-700 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                        <CheckCircle2 className="w-4 h-4 text-green-500"/>
+                        <span><span className="font-bold">Tiêu đề & Mô tả:</span> Giúp khách hàng biết họ sẽ nhận được gì.</span>
+                      </li>
+                      <li className="flex items-center gap-2 text-sm font-medium text-slate-700 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                        <CheckCircle2 className="w-4 h-4 text-green-500"/>
+                        <span><span className="font-bold">Màu chữ riêng biệt:</span> Bạn có thể chọn màu chữ khác với màu QR.</span>
+                      </li>
+                      <li className="flex items-center gap-2 text-sm font-medium text-slate-700 bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
+                        <CheckCircle2 className="w-4 h-4 text-green-500"/>
+                        <span><span className="font-bold">Eyedropper (Chấm màu):</span> Lấy mã màu chuẩn xác từ chính ảnh nền của bạn.</span>
+                      </li>
+                   </ul>
+               </div>
+            </div>
 
           </div>
         )}

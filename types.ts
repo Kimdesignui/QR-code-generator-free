@@ -19,6 +19,7 @@ export interface QRCodeConfig {
   
   fgColor: string;
   bgColor: string;
+  textColor?: string; // Màu chữ tiêu đề và mô tả
   level: 'L' | 'M' | 'Q' | 'H';
   
   title?: string;
