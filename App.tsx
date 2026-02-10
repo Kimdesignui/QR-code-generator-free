@@ -45,7 +45,8 @@ import {
   ChevronRight,
   LayoutGrid,
   List as ListIcon,
-  Scaling
+  Scaling,
+  ArrowDownToLine
 } from 'lucide-react';
 import { QRCodeConfig, GeneratedQR, ContactInfo } from './types';
 
@@ -74,7 +75,7 @@ const DEFAULT_CONFIG: QRCodeConfig = {
   titleFontSize: 80, // Default pixel size relative to 1280px canvas
   description: '',
   descFontSize: 60,
-  textYOffset: 0,
+  textToQrGap: 60, // Default gap 60px
   bgImage: undefined,
   bgImageOpacity: 1.0,
   bgImageFit: 'cover',
@@ -199,7 +200,7 @@ END:VCARD`;
   // --- Logic Editor ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    const isNumeric = ['size', 'bgImageOpacity', 'bgImageScale', 'qrScale', 'logoScale', 'titleFontSize', 'descFontSize', 'textYOffset'].includes(name);
+    const isNumeric = ['size', 'bgImageOpacity', 'bgImageScale', 'qrScale', 'logoScale', 'titleFontSize', 'descFontSize', 'textToQrGap'].includes(name);
     const val = isNumeric ? parseFloat(value) : value;
 
     setConfig(prev => {
@@ -299,23 +300,20 @@ END:VCARD`;
     const titleFontSize = (config.titleFontSize || 80) * scaleFactor;
     const descFontSize = (config.descFontSize || 45) * scaleFactor;
     const textGap = 25 * scaleFactor;
-    const qrGap = 64 * scaleFactor;
-    
-    // Offset
-    const offsetY = (config.textYOffset || 0) * scaleFactor;
+    const qrGap = (config.textToQrGap || 64) * scaleFactor; // User-controlled gap
 
     // Calculate Text Height
     let textHeight = 0;
+    const hasText = !!(config.title || config.description);
     if (config.title) textHeight += titleFontSize * 1.3;
     if (config.description) textHeight += descFontSize * 1.3;
     if (config.title && config.description) textHeight += textGap;
 
     // Total Content Height (Text + Gap + QR)
-    const hasText = !!(config.title || config.description);
     const totalContentHeight = qrGroupWidth + (hasText ? (textHeight + qrGap) : 0);
 
-    // Starting Y to center everything vertically + Manual Offset
-    let currentY = ((canvasSize - totalContentHeight) / 2) + offsetY;
+    // Starting Y to center everything vertically
+    let currentY = (canvasSize - totalContentHeight) / 2;
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasSize;
@@ -863,13 +861,13 @@ END:VCARD`;
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                                          <MoveVertical className="w-3 h-3"/> Vị trí dọc
+                                          <ArrowDownToLine className="w-3 h-3"/> Khoảng cách với QR
                                         </label>
                                         <div className="flex items-center gap-2">
                                           <Minus className="w-3 h-3 text-slate-400"/>
                                           <input 
-                                              type="range" name="textYOffset" min="-300" max="300" step="10" 
-                                              value={config.textYOffset} onChange={handleInputChange} 
+                                              type="range" name="textToQrGap" min="0" max="250" step="5" 
+                                              value={config.textToQrGap} onChange={handleInputChange} 
                                               className="flex-1 h-1 bg-slate-200 rounded-lg appearance-none accent-indigo-600" 
                                           />
                                           <PlusIcon className="w-3 h-3 text-slate-400"/>
@@ -985,9 +983,9 @@ END:VCARD`;
                                   />
                                )}
                                
-                               <div className="relative z-10 flex flex-col items-center transition-all duration-300" style={{ transform: `translateY(${config.textYOffset * 0.25}px)` }}>
+                               <div className="relative z-10 flex flex-col items-center transition-all duration-300">
                                   {(config.title || config.description) && (
-                                     <div className="text-center mb-4" style={{ color: config.textColor || config.fgColor }}>
+                                     <div className="text-center" style={{ color: config.textColor || config.fgColor, marginBottom: `${config.textToQrGap * 0.25}px` }}>
                                          {config.title && <div style={{ fontSize: `${config.titleFontSize * 0.25}px`, fontWeight: 'bold', lineHeight: 1.2, textShadow: '0 2px 4px rgba(255,255,255,0.8)' }}>{config.title}</div>}
                                          {config.description && <div style={{ fontSize: `${config.descFontSize * 0.25}px`, marginTop: '4px', opacity: 0.9, textShadow: '0 2px 4px rgba(255,255,255,0.8)' }}>{config.description}</div>}
                                      </div>
@@ -1040,10 +1038,10 @@ END:VCARD`;
                                   />
                                )}
                                
-                               <div className="relative z-10 flex flex-col items-center transition-all duration-300" style={{ transform: `translateY(${config.textYOffset * 0.25}px)` }}>
+                               <div className="relative z-10 flex flex-col items-center transition-all duration-300">
                                   {/* Text Preview (Approx) */}
                                   {(config.title || config.description) && (
-                                     <div className="text-center mb-4" style={{ color: config.textColor || config.fgColor }}>
+                                     <div className="text-center" style={{ color: config.textColor || config.fgColor, marginBottom: `${config.textToQrGap * 0.25}px` }}>
                                          {config.title && <div style={{ fontSize: `${config.titleFontSize * 0.25}px`, fontWeight: 'bold', lineHeight: 1.2, textShadow: '0 2px 4px rgba(255,255,255,0.8)' }}>{config.title}</div>}
                                          {config.description && <div style={{ fontSize: `${config.descFontSize * 0.25}px`, marginTop: '4px', opacity: 0.9, textShadow: '0 2px 4px rgba(255,255,255,0.8)' }}>{config.description}</div>}
                                      </div>

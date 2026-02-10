@@ -27,7 +27,7 @@ export interface QRCodeConfig {
   titleFontSize: number; // New: Cỡ chữ tiêu đề
   description?: string;
   descFontSize: number; // New: Cỡ chữ mô tả
-  textYOffset: number; // New: Vị trí dọc của khối văn bản (0 là giữa, âm là lên, dương là xuống)
+  textToQrGap: number; // Changed: Khoảng cách giữa văn bản và khối QR
   
   bgImage?: string;
   bgImageOpacity: number;
