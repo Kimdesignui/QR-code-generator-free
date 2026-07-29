@@ -14,6 +14,7 @@ export interface QRCodeConfig {
   value: string; // Giá trị cuối cùng để tạo QR (URL hoặc chuỗi vCard)
   urlValue?: string; // New: Lưu riêng giá trị URL để không bị mất khi chuyển qua lại tab Contact
   contactInfo?: ContactInfo; // Lưu trữ thông tin form liên hệ để edit lại
+  contactQrMode?: 'landing' | 'vcard'; // Cách xử lý khi quét QR liên hệ
   
   size: number; // Độ phân giải ảnh xuất (px)
   qrScale: number; // Tỉ lệ QR so với ảnh (0.05 - 1.0)

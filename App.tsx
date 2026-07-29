@@ -65,6 +65,7 @@ const DEFAULT_CONFIG: QRCodeConfig = {
   value: '',
   urlValue: '',
   contactInfo: DEFAULT_CONTACT,
+  contactQrMode: 'landing',
   size: 1280,
   qrScale: 0.75,
   fgColor: '#000000',
@@ -90,10 +91,113 @@ const escapeVCardValue = (value = '') => value
   .replace(/;/g, '\\;')
   .replace(/,/g, '\\,');
 
+const normalizePhone = (phone = '') => phone.replace(/[.\s()-]/g, '');
+
+const normalizeWebsite = (website = '') => {
+  const trimmed = website.trim();
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
+const buildVCard = (info: ContactInfo) => {
+  const organization = escapeVCardValue(info.organization);
+  const fullName = escapeVCardValue(info.fullName);
+  const jobTitle = escapeVCardValue(info.jobTitle);
+  const address = escapeVCardValue(info.address);
+  const phone = normalizePhone(info.phone);
+  const website = normalizeWebsite(info.website);
+
+  return [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    `ORG;CHARSET=UTF-8:${organization}`,
+    `N;CHARSET=UTF-8:${fullName};;;;`,
+    `FN;CHARSET=UTF-8:${fullName}`,
+    `TITLE;CHARSET=UTF-8:${jobTitle}`,
+    `ADR;TYPE=WORK;CHARSET=UTF-8:;;${address};;;;`,
+    `TEL;TYPE=CELL,VOICE:${phone}`,
+    `EMAIL;TYPE=INTERNET:${info.email.trim()}`,
+    `URL:${website}`,
+    'END:VCARD',
+  ].join('\r\n');
+};
+
+const buildContactLandingUrl = (info: ContactInfo) => {
+  const params = new URLSearchParams({
+    contact: '1',
+    n: info.fullName.trim(),
+    t: info.jobTitle.trim(),
+    o: info.organization.trim(),
+    a: info.address.trim(),
+    p: normalizePhone(info.phone),
+    e: info.email.trim(),
+    w: normalizeWebsite(info.website),
+  });
+  const baseUrl = window.location.href.split(/[?#]/)[0];
+  return `${baseUrl}?${params.toString()}`;
+};
+
+const getSharedContact = (): ContactInfo | null => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('contact') !== '1') return null;
+
+  return {
+    fullName: params.get('n') || '',
+    jobTitle: params.get('t') || '',
+    organization: params.get('o') || '',
+    address: params.get('a') || '',
+    phone: params.get('p') || '',
+    email: params.get('e') || '',
+    website: params.get('w') || '',
+  };
+};
+
+function ContactLanding({ contact }: { contact: ContactInfo }) {
+  const phone = normalizePhone(contact.phone);
+  const website = normalizeWebsite(contact.website);
+  const vCardHref = `data:text/vcard;charset=utf-8,${encodeURIComponent(buildVCard(contact))}`;
+  const fileName = (contact.fullName || 'lien-he').replace(/[^\p{L}\p{N}-]+/gu, '-');
+
+  return (
+    <main className="min-h-screen bg-slate-950 px-5 py-10 text-white">
+      <section className="mx-auto max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-indigo-500">
+          <Contact2 className="h-10 w-10" />
+        </div>
+        <p className="mb-2 text-sm font-bold uppercase tracking-widest text-indigo-300">Thông tin liên hệ</p>
+        <h1 className="text-3xl font-bold">{contact.fullName || 'Danh thiếp'}</h1>
+        {contact.jobTitle && <p className="mt-2 text-slate-300">{contact.jobTitle}</p>}
+        {contact.organization && <p className="mt-1 font-semibold text-white">{contact.organization}</p>}
+        {contact.address && <p className="mt-4 text-sm leading-6 text-slate-400">{contact.address}</p>}
+
+        <div className="mt-8 grid gap-3">
+          {phone && (
+            <a href={`tel:${phone}`} className="flex items-center gap-3 rounded-2xl bg-emerald-500 px-5 py-4 font-bold text-white transition-colors hover:bg-emerald-400">
+              <Phone className="h-5 w-5" /> Gọi {phone}
+            </a>
+          )}
+          {contact.email && (
+            <a href={`mailto:${contact.email.trim()}`} className="flex items-center gap-3 rounded-2xl bg-sky-500 px-5 py-4 font-bold text-white transition-colors hover:bg-sky-400">
+              <Mail className="h-5 w-5" /> Gửi email
+            </a>
+          )}
+          {website && (
+            <a href={website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-2xl bg-indigo-500 px-5 py-4 font-bold text-white transition-colors hover:bg-indigo-400">
+              <Globe className="h-5 w-5" /> Mở website
+            </a>
+          )}
+          <a href={vCardHref} download={`${fileName}.vcf`} className="flex items-center gap-3 rounded-2xl border border-slate-700 px-5 py-4 font-bold text-slate-100 transition-colors hover:bg-slate-800">
+            <Contact2 className="h-5 w-5" /> Lưu vào danh bạ
+          </a>
+        </div>
+      </section>
+    </main>
+  );
+}
 type ViewMode = 'create' | 'history' | 'guide';
 type HistoryViewMode = 'grid' | 'list';
 
-export default function App() {
+function StudioApp() {
   // Navigation State
   const [view, setView] = useState<ViewMode>('create');
   const [historyViewMode, setHistoryViewMode] = useState<HistoryViewMode>('grid');
@@ -132,39 +236,16 @@ export default function App() {
     }
   }, []);
 
-  // --- vCard Generator Logic ---
+  // --- Contact QR Generator Logic ---
   useEffect(() => {
     if (config.mode === 'contact' && config.contactInfo) {
-      const info = config.contactInfo;
-      const formattedPhone = info.phone ? info.phone.replace(/\./g, '') : '';
-      const websiteUrl = info.website
-        ? (info.website.trim() && !/^https?:\/\//i.test(info.website)
-          ? `https://${info.website.trim()}`
-          : info.website.trim())
-        : '';
-      const organization = escapeVCardValue(info.organization);
-      const fullName = escapeVCardValue(info.fullName);
-      const jobTitle = escapeVCardValue(info.jobTitle);
-      const address = escapeVCardValue(info.address);
-
-      const vCardData = [
-        'BEGIN:VCARD',
-        'VERSION:3.0',
-        `ORG;CHARSET=UTF-8:${organization}`,
-        `N;CHARSET=UTF-8:${fullName};;;;`,
-        `FN;CHARSET=UTF-8:${fullName}`,
-        `TITLE;CHARSET=UTF-8:${jobTitle}`,
-        `ADR;TYPE=WORK;CHARSET=UTF-8:;;${address};;;;`,
-        `TEL;TYPE=WORK,VOICE:${formattedPhone}`,
-        `TEL;TYPE=CELL:${formattedPhone}`,
-        `EMAIL;TYPE=INTERNET:${info.email.trim()}`,
-        `URL:${websiteUrl}`,
-        'END:VCARD',
-      ].join('\r\n');
+      const value = (config.contactQrMode ?? 'landing') === 'landing'
+        ? buildContactLandingUrl(config.contactInfo)
+        : buildVCard(config.contactInfo);
       
-      setConfig(prev => ({ ...prev, value: vCardData }));
+      setConfig(prev => ({ ...prev, value }));
     }
-  }, [config.contactInfo, config.mode]);
+  }, [config.contactInfo, config.contactQrMode, config.mode]);
 
 
   // Save History Helper
@@ -795,6 +876,25 @@ export default function App() {
                                     />
                                   ) : (
                                     <div className="space-y-3">
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfig(prev => ({ ...prev, contactQrMode: 'landing' }))}
+                                            className={`rounded-xl border px-3 py-3 text-xs font-bold transition-colors ${(config.contactQrMode ?? 'landing') === 'landing' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                                          >
+                                            Liên hệ bấm được
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfig(prev => ({ ...prev, contactQrMode: 'vcard' }))}
+                                            className={`rounded-xl border px-3 py-3 text-xs font-bold transition-colors ${config.contactQrMode === 'vcard' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500'}`}
+                                          >
+                                            Danh bạ vCard
+                                          </button>
+                                        </div>
+                                        <p className="text-xs leading-5 text-slate-500">
+                                          Chế độ bấm được mở trang có nút gọi, email và website. vCard phù hợp khi cần nhập thẳng vào danh bạ.
+                                        </p>
                                         <input type="text" name="fullName" value={config.contactInfo?.fullName} onChange={handleContactChange} placeholder="Họ tên" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="jobTitle" value={config.contactInfo?.jobTitle} onChange={handleContactChange} placeholder="Chức vụ" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="organization" value={config.contactInfo?.organization} onChange={handleContactChange} placeholder="Công ty / Tổ chức" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
@@ -1322,4 +1422,9 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+export default function App() {
+  const sharedContact = getSharedContact();
+  return sharedContact ? <ContactLanding contact={sharedContact} /> : <StudioApp />;
 }
