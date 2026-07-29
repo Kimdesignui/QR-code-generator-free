@@ -122,22 +122,66 @@ const buildVCard = (info: ContactInfo) => {
   ].join('\r\n');
 };
 
+const encodeContactPayload = (info: ContactInfo) => {
+  const payload = JSON.stringify([
+    info.fullName.trim(),
+    info.jobTitle.trim(),
+    info.organization.trim(),
+    info.address.trim(),
+    normalizePhone(info.phone),
+    info.email.trim(),
+    normalizeWebsite(info.website),
+  ]);
+  const bytes = new TextEncoder().encode(payload);
+  const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+};
+
+const decodeContactPayload = (payload: string): ContactInfo | null => {
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    const values = JSON.parse(new TextDecoder().decode(bytes));
+
+    if (!Array.isArray(values)) return null;
+
+    const [
+      fullName = '',
+      jobTitle = '',
+      organization = '',
+      address = '',
+      phone = '',
+      email = '',
+      website = '',
+    ] = values;
+
+    return { fullName, jobTitle, organization, address, phone, email, website };
+  } catch {
+    return null;
+  }
+};
+
 const buildContactLandingUrl = (info: ContactInfo) => {
-  const params = new URLSearchParams({
-    contact: '1',
-    n: info.fullName.trim(),
-    t: info.jobTitle.trim(),
-    o: info.organization.trim(),
-    a: info.address.trim(),
-    p: normalizePhone(info.phone),
-    e: info.email.trim(),
-    w: normalizeWebsite(info.website),
-  });
   const baseUrl = window.location.href.split(/[?#]/)[0];
-  return `${baseUrl}?${params.toString()}`;
+  return `${baseUrl}#c=${encodeContactPayload(info)}`;
 };
 
 const getSharedContact = (): ContactInfo | null => {
+  const contactToken = window.location.hash.startsWith('#c=')
+    ? window.location.hash.slice(3)
+    : '';
+
+  if (contactToken) {
+    return decodeContactPayload(contactToken);
+  }
+
+  // Keep previously generated query-string QR codes working.
   const params = new URLSearchParams(window.location.search);
   if (params.get('contact') !== '1') return null;
 
@@ -151,7 +195,6 @@ const getSharedContact = (): ContactInfo | null => {
     website: params.get('w') || '',
   };
 };
-
 function ContactLanding({ contact }: { contact: ContactInfo }) {
   const phone = normalizePhone(contact.phone);
   const website = normalizeWebsite(contact.website);
