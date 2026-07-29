@@ -84,6 +84,12 @@ const DEFAULT_CONFIG: QRCodeConfig = {
   logoScale: 0.2,
 };
 
+const escapeVCardValue = (value = '') => value
+  .replace(/\\/g, '\\\\')
+  .replace(/\r?\n/g, '\\n')
+  .replace(/;/g, '\\;')
+  .replace(/,/g, '\\,');
+
 type ViewMode = 'create' | 'history' | 'guide';
 type HistoryViewMode = 'grid' | 'list';
 
@@ -130,18 +136,24 @@ export default function App() {
   useEffect(() => {
     if (config.mode === 'contact' && config.contactInfo) {
       const info = config.contactInfo;
-      const vCardData = `BEGIN:VCARD
-VERSION:3.0
-N:${info.fullName};;;;
-FN:${info.fullName}
-ORG:${info.organization}
-TITLE:${info.jobTitle}
-TEL;TYPE=WORK,VOICE:${info.phone}
-TEL;TYPE=CELL:${info.phone}
-EMAIL:${info.email}
-URL:${info.website}
-ADR;TYPE=WORK:;;${info.address};;;;
-END:VCARD`;
+      const fullName = escapeVCardValue(info.fullName);
+      const organization = escapeVCardValue(info.organization);
+      const jobTitle = escapeVCardValue(info.jobTitle);
+      const address = escapeVCardValue(info.address);
+      const vCardData = [
+        'BEGIN:VCARD',
+        'VERSION:3.0',
+        `N;CHARSET=UTF-8:${fullName};;;;`,
+        `FN;CHARSET=UTF-8:${fullName}`,
+        `ORG;CHARSET=UTF-8:${organization}`,
+        `TITLE;CHARSET=UTF-8:${jobTitle}`,
+        `TEL;TYPE=WORK,VOICE:${info.phone}`,
+        `TEL;TYPE=CELL:${info.phone}`,
+        `EMAIL:${info.email}`,
+        `URL:${info.website}`,
+        `ADR;TYPE=WORK;CHARSET=UTF-8:;;${address};;;;`,
+        'END:VCARD',
+      ].join('\r\n');
       
       setConfig(prev => ({ ...prev, value: vCardData }));
     }
