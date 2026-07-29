@@ -136,22 +136,29 @@ export default function App() {
   useEffect(() => {
     if (config.mode === 'contact' && config.contactInfo) {
       const info = config.contactInfo;
-      const fullName = escapeVCardValue(info.fullName);
+      const formattedPhone = info.phone ? info.phone.replace(/\./g, '') : '';
+      const websiteUrl = info.website
+        ? (info.website.trim() && !/^https?:\/\//i.test(info.website)
+          ? `https://${info.website.trim()}`
+          : info.website.trim())
+        : '';
       const organization = escapeVCardValue(info.organization);
+      const fullName = escapeVCardValue(info.fullName);
       const jobTitle = escapeVCardValue(info.jobTitle);
       const address = escapeVCardValue(info.address);
+
       const vCardData = [
         'BEGIN:VCARD',
         'VERSION:3.0',
+        `ORG;CHARSET=UTF-8:${organization}`,
         `N;CHARSET=UTF-8:${fullName};;;;`,
         `FN;CHARSET=UTF-8:${fullName}`,
-        `ORG;CHARSET=UTF-8:${organization}`,
         `TITLE;CHARSET=UTF-8:${jobTitle}`,
-        `TEL;TYPE=WORK,VOICE:${info.phone}`,
-        `TEL;TYPE=CELL:${info.phone}`,
-        `EMAIL:${info.email}`,
-        `URL:${info.website}`,
         `ADR;TYPE=WORK;CHARSET=UTF-8:;;${address};;;;`,
+        `TEL;TYPE=WORK,VOICE:${formattedPhone}`,
+        `TEL;TYPE=CELL:${formattedPhone}`,
+        `EMAIL;TYPE=INTERNET:${info.email.trim()}`,
+        `URL:${websiteUrl}`,
         'END:VCARD',
       ].join('\r\n');
       
@@ -789,9 +796,12 @@ export default function App() {
                                   ) : (
                                     <div className="space-y-3">
                                         <input type="text" name="fullName" value={config.contactInfo?.fullName} onChange={handleContactChange} placeholder="Họ tên" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
+                                        <input type="text" name="jobTitle" value={config.contactInfo?.jobTitle} onChange={handleContactChange} placeholder="Chức vụ" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
+                                        <input type="text" name="organization" value={config.contactInfo?.organization} onChange={handleContactChange} placeholder="Công ty / Tổ chức" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="phone" value={config.contactInfo?.phone} onChange={handleContactChange} placeholder="Số điện thoại" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="email" value={config.contactInfo?.email} onChange={handleContactChange} placeholder="Email" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="website" value={config.contactInfo?.website} onChange={handleContactChange} placeholder="Website" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
+                                        <input type="text" name="address" value={config.contactInfo?.address} onChange={handleContactChange} placeholder="Địa chỉ" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                     </div>
                                   )}
                               </div>
