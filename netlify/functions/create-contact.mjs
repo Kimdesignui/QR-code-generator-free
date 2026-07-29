@@ -49,27 +49,6 @@ const sanitizeContact = (input) => {
 
 const makeId = () => crypto.randomUUID().replaceAll('-', '').slice(0, 12);
 
-const createMiuiSafeUrl = async (destination) => {
-  const response = await fetch('https://cleanuri.com/api/v1/shorten', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ url: destination }),
-    signal: AbortSignal.timeout(8000),
-  });
-
-  if (!response.ok) throw new Error(`Shortener returned ${response.status}`);
-
-  const result = await response.json();
-  if (
-    typeof result.result_url !== 'string'
-    || !/^https:\/\/cleanuri\.com\/[a-zA-Z0-9_-]+$/.test(result.result_url)
-  ) {
-    throw new Error('Shortener returned an invalid URL');
-  }
-
-  return result.result_url;
-};
-
 export default async (req) => {
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
@@ -103,15 +82,7 @@ export default async (req) => {
     const id = makeId();
     const result = await store.set(id, JSON.stringify(contact), { onlyIfNew: true });
     if (result.modified) {
-      const contactUrl = `${requestUrl.origin}/c/${id}`;
-
-      try {
-        const url = await createMiuiSafeUrl(contactUrl);
-        return jsonResponse({ id, url, contactUrl }, 201);
-      } catch (error) {
-        console.error('Failed to create MIUI-safe URL', error);
-        return jsonResponse({ error: 'Could not create a scanner-compatible link' }, 502);
-      }
+      return jsonResponse({ id, url: `${requestUrl.origin}/c/${id}` }, 201);
     }
   }
 

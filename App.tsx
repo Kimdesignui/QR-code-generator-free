@@ -985,7 +985,7 @@ function StudioApp() {
                                           <p className="text-xs font-semibold text-amber-600">Đang tạo liên kết ngắn an toàn...</p>
                                         )}
                                         {(config.contactQrMode ?? 'landing') === 'landing' && contactLinkStatus === 'ready' && (
-                                          <p className="text-xs font-semibold text-emerald-600">Đã tạo URL tương thích Xiaomi. QR sẵn sàng để quét.</p>
+                                          <p className="text-xs font-semibold text-emerald-600">Đã tạo URL ngắn HTTPS. QR sẵn sàng để quét.</p>
                                         )}
                                         {(config.contactQrMode ?? 'landing') === 'landing' && contactLinkStatus === 'error' && (
                                           <p className="text-xs font-semibold text-red-600">Không tạo được link ngắn. Vui lòng thử lại.</p>
