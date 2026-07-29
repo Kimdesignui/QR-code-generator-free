@@ -1,0 +1,141 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #020617;
+  color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(99, 102, 241, 0.28), transparent 38rem),
+    #020617;
+}
+
+.contact-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 18px;
+}
+
+.contact-card {
+  width: min(100%, 520px);
+  padding: 28px;
+  border: 1px solid #1e293b;
+  border-radius: 28px;
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+}
+
+.contact-avatar {
+  width: 80px;
+  height: 80px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  border-radius: 24px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(28px, 8vw, 38px);
+  line-height: 1.12;
+}
+
+.job-title,
+.organization,
+.address {
+  overflow-wrap: anywhere;
+}
+
+.job-title {
+  margin: 12px 0 0;
+  color: #cbd5e1;
+}
+
+.organization {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+
+.address {
+  margin: 20px 0 0;
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.action {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 18px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  color: #fff;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.action:hover,
+.action:focus-visible {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+
+.action-phone {
+  background: #10b981;
+}
+
+.action-email {
+  background: #0ea5e9;
+}
+
+.action-web {
+  background: #6366f1;
+}
+
+.action-save {
+  border-color: #334155;
+  background: transparent;
+}
+
+.contact-error {
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .contact-card {
+    padding: 22px;
+    border-radius: 22px;
+  }
+}
