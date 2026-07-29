@@ -65,7 +65,7 @@ const DEFAULT_CONFIG: QRCodeConfig = {
   value: '',
   urlValue: '',
   contactInfo: DEFAULT_CONTACT,
-  contactQrMode: 'landing',
+  contactQrMode: 'vcard',
   size: 1280,
   qrScale: 0.75,
   fgColor: '#000000',
@@ -250,7 +250,6 @@ function StudioApp() {
   // App State
   const [config, setConfig] = useState<QRCodeConfig>(DEFAULT_CONFIG);
   const [history, setHistory] = useState<GeneratedQR[]>([]);
-  const [contactLinkStatus, setContactLinkStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   
   // Create View State
   const [useBgImage, setUseBgImage] = useState(false);
@@ -282,56 +281,10 @@ function StudioApp() {
 
   // --- Contact QR Generator Logic ---
   useEffect(() => {
-    if (config.mode !== 'contact' || !config.contactInfo) {
-      setContactLinkStatus('idle');
-      return;
-    }
-
-    if ((config.contactQrMode ?? 'landing') === 'vcard') {
+    if (config.mode === 'contact' && config.contactInfo) {
       setConfig(prev => ({ ...prev, value: buildVCard(config.contactInfo || DEFAULT_CONTACT) }));
-      setContactLinkStatus('ready');
-      return;
     }
-
-    const contact = config.contactInfo;
-    if (!Object.values(contact).some(value => value.trim())) {
-      setConfig(prev => ({ ...prev, value: '' }));
-      setContactLinkStatus('idle');
-      return;
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setContactLinkStatus('loading');
-      setConfig(prev => ({ ...prev, value: '' }));
-
-      try {
-        const response = await fetch('/api/contacts', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(contact),
-          signal: controller.signal,
-        });
-        const result = await response.json();
-
-        if (!response.ok || typeof result.url !== 'string') {
-          throw new Error(result.error || 'Could not create contact link');
-        }
-
-        setConfig(prev => ({ ...prev, value: result.url }));
-        setContactLinkStatus('ready');
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        console.error('Failed to create short contact link', error);
-        setContactLinkStatus('error');
-      }
-    }, 650);
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [config.contactInfo, config.contactQrMode, config.mode]);
+  }, [config.contactInfo, config.mode]);
 
 
   // Save History Helper
@@ -943,7 +896,7 @@ function StudioApp() {
                                     Đường dẫn (URL)
                                   </button>
                                   <button 
-                                    onClick={() => setConfig(prev => ({...prev, mode: 'contact'}))} 
+                                    onClick={() => setConfig(prev => ({...prev, mode: 'contact', contactQrMode: 'vcard'}))}
                                     className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${config.mode === 'contact' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:bg-slate-200/50'}`}
                                   >
                                     Danh thiếp (vCard)
@@ -962,34 +915,10 @@ function StudioApp() {
                                     />
                                   ) : (
                                     <div className="space-y-3">
-                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                          <button
-                                            type="button"
-                                            onClick={() => setConfig(prev => ({ ...prev, contactQrMode: 'landing' }))}
-                                            className={`rounded-xl border px-3 py-3 text-xs font-bold transition-colors ${(config.contactQrMode ?? 'landing') === 'landing' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500'}`}
-                                          >
-                                            Link ngắn bấm được
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setConfig(prev => ({ ...prev, contactQrMode: 'vcard' }))}
-                                            className={`rounded-xl border px-3 py-3 text-xs font-bold transition-colors ${config.contactQrMode === 'vcard' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-500'}`}
-                                          >
-                                            Danh bạ vCard
-                                          </button>
+                                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                                          <p className="text-xs font-bold text-emerald-700">Danh bạ vCard an toàn</p>
+                                          <p className="mt-1 text-xs leading-5 text-emerald-700">QR chứa trực tiếp thông tin liên hệ, không qua dịch vụ rút gọn hoặc website bên thứ ba.</p>
                                         </div>
-                                        <p className="text-xs leading-5 text-slate-500">
-                                          Link ngắn mở trang HTML có nút gọi, email và website. vCard phù hợp khi cần nhập thẳng vào danh bạ.
-                                        </p>
-                                        {(config.contactQrMode ?? 'landing') === 'landing' && contactLinkStatus === 'loading' && (
-                                          <p className="text-xs font-semibold text-amber-600">Đang tạo liên kết ngắn an toàn...</p>
-                                        )}
-                                        {(config.contactQrMode ?? 'landing') === 'landing' && contactLinkStatus === 'ready' && (
-                                          <p className="text-xs font-semibold text-emerald-600">Đã tạo URL ngắn HTTPS. QR sẵn sàng để quét.</p>
-                                        )}
-                                        {(config.contactQrMode ?? 'landing') === 'landing' && contactLinkStatus === 'error' && (
-                                          <p className="text-xs font-semibold text-red-600">Không tạo được link ngắn. Vui lòng thử lại.</p>
-                                        )}
                                         <input type="text" name="fullName" value={config.contactInfo?.fullName} onChange={handleContactChange} placeholder="Họ tên" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="jobTitle" value={config.contactInfo?.jobTitle} onChange={handleContactChange} placeholder="Chức vụ" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
                                         <input type="text" name="organization" value={config.contactInfo?.organization} onChange={handleContactChange} placeholder="Công ty / Tổ chức" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium" />
